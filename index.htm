@@ -1,0 +1,733 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Media Reader - 音视频阅读器</title>
+<style>
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+    background: #fff;
+    color: #333;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .top-bar {
+    background: #f8f9fa;
+    padding: 12px 20px;
+    border-bottom: 1px solid #eaeaea;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .left-controls {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    flex: 1;
+  }
+
+  .right-controls {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+  }
+
+  .file-btn {
+    padding: 8px 16px;
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    font-size: 14px;
+    cursor: pointer;
+    white-space: nowrap;
+    position: relative;
+  }
+
+  .media-container {
+    flex: 1;
+    min-width: 200px;
+    max-width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    position: relative;
+  }
+
+  .media-player {
+    width: 100%;
+    background: #000;
+    border-radius: 6px;
+    overflow: hidden;
+  }
+
+  #mediaPlayer.video-mode {
+    height: 240px;
+    max-height: 40vh;
+  }
+
+  #mediaPlayer.audio-mode {
+    height: 36px;
+  }
+
+  .media-type-indicator {
+    font-size: 12px;
+    color: #666;
+    text-align: center;
+    padding: 2px 6px;
+    background: #f0f0f0;
+    border-radius: 4px;
+    align-self: flex-start;
+  }
+
+  .follow-btn {
+    padding: 8px 12px;
+    background: #4a90e2;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.2s;
+  }
+
+  .follow-btn:hover { background: #3a7bc8; }
+  .follow-btn:active { background: #2a6bb0; }
+  .follow-btn.active {
+    background: #2a6bb0;
+    box-shadow: inset 0 2px 4px rgba(0,0,0,0.1);
+  }
+
+  .text-area {
+    flex: 1;
+    padding: 30px 60px;
+    overflow-y: auto;
+    line-height: 1.6;
+    font-size: 15px;
+    max-width: 900px;
+    margin: 0 auto;
+    width: 100%;
+    user-select: text;
+  }
+
+  .line { margin: 14px 0; padding: 10px 0; }
+  .line.active-line { background: rgba(74,144,226,0.02); }
+
+  .word {
+    display: inline;
+    margin: 0 1px;
+    padding: 0;
+    font-weight: 600;
+    font-family: 'Segoe UI', Roboto, -apple-system, sans-serif;
+  }
+
+  .word.current {
+    color: #ffcc00 !important;
+    font-weight: 600;
+    background: none !important;
+  }
+
+  .punctuation { margin: 0 1px; }
+
+  .loading {
+    color: #666;
+    text-align: center;
+    padding: 40px;
+    font-size: 15px;
+  }
+
+  .hidden-input { 
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  /* 错误面板样式 */
+  .error-panel {
+    background: #f8d7da;
+    border: 1px solid #f5c6cb;
+    border-radius: 6px;
+    padding: 15px;
+    margin: 10px 0;
+  }
+  
+  .error-panel strong {
+    color: #721c24;
+  }
+  
+  .error-panel p {
+    margin: 10px 0;
+    color: #721c24;
+  }
+  
+  .action-btn {
+    margin: 5px;
+    padding: 8px 12px;
+    background: #6c757d;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+  }
+  
+  .action-btn.detect {
+    background: #17a2b8;
+  }
+  
+  .action-btn.success {
+    background: #28a745;
+  }
+
+  @media (max-width: 768px) {
+    .top-bar {
+      flex-direction: column;
+      gap: 12px;
+      align-items: stretch;
+    }
+    
+    .left-controls {
+      flex-direction: column;
+      align-items: stretch;
+    }
+    
+    .text-area {
+      padding: 20px;
+    }
+    
+    #mediaPlayer.video-mode {
+      height: 200px;
+    }
+  }
+</style>
+</head>
+<body>
+
+<div class="top-bar">
+  <div class="left-controls">
+    <label class="file-btn">
+      🎬 音视频
+      <input type="file" id="mediaFile" accept="audio/*,video/*" class="hidden-input">
+    </label>
+
+    <label class="file-btn">
+      📄 字幕
+      <input type="file" id="srtFile" accept=".srt,.txt" class="hidden-input">
+    </label>
+
+    <div class="media-container">
+      <div class="media-type-indicator" id="mediaTypeIndicator">未加载媒体</div>
+      <video id="mediaPlayer" controls class="media-player audio-mode" preload="metadata">
+        <p>您的浏览器不支持 HTML5 视频/音频播放。</p>
+      </video>
+    </div>
+  </div>
+
+  <div class="right-controls">
+    <button id="followBtn" class="follow-btn" title="点击滚动到当前播放位置">📌</button>
+  </div>
+</div>
+
+<div class="text-area" id="textArea">
+  <div class="loading">上传音视频文件和字幕文件开始阅读</div>
+</div>
+
+<script>
+// 等待DOM加载完成
+document.addEventListener('DOMContentLoaded', function() {
+  console.log('Media Reader 初始化...');
+  
+  // 全局变量
+  let subtitles = [];
+  let currentLineIndex = -1;
+  let followMode = false;
+  let isVideo = false;
+  
+  // 获取DOM元素
+  const mediaPlayer = document.getElementById('mediaPlayer');
+  const followBtn = document.getElementById('followBtn');
+  const textArea = document.getElementById('textArea');
+  const mediaFileInput = document.getElementById('mediaFile');
+  const srtFileInput = document.getElementById('srtFile');
+  const mediaTypeIndicator = document.getElementById('mediaTypeIndicator');
+  
+  // 检查元素是否存在
+  if (!mediaPlayer || !followBtn || !textArea) {
+    console.error('找不到必要的DOM元素');
+    return;
+  }
+  
+  console.log('所有DOM元素加载成功');
+
+  // 解析时间函数
+  function parseTime(h, m, s, ms) {
+    return parseInt(h) * 3600 + parseInt(m) * 60 + parseInt(s) + parseInt(ms || 0) / 1000;
+  }
+
+  // 解析SRT文件
+  function parseSRT(text) {
+    console.log('开始解析SRT文件...');
+    const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+    const result = [];
+    let i = 0;
+    
+    while (i < lines.length) {
+      while (i < lines.length && lines[i].trim() === '') i++;
+      if (i >= lines.length) break;
+      
+      const indexLine = lines[i].trim();
+      if (!/^\d+$/.test(indexLine)) {
+        i++;
+        continue;
+      }
+      i++;
+      
+      if (i >= lines.length) break;
+      
+      const timeLine = lines[i];
+      let timeMatch = timeLine.match(/(\d{2}):(\d{2}):(\d{2})[,.](\d{3})\s*-->\s*(\d{2}):(\d{2}):(\d{2})[,.](\d{3})/);
+      
+      if (!timeMatch) {
+        timeMatch = timeLine.match(/(\d{2}):(\d{2}):(\d{2})\.(\d{3})\s*-->\s*(\d{2}):(\d{2}):(\d{2})\.(\d{3})/);
+      }
+      
+      if (!timeMatch) {
+        timeMatch = timeLine.match(/(\d{2}):(\d{2}):(\d{2})\s*-->\s*(\d{2}):(\d{2}):(\d{2})/);
+        if (timeMatch) {
+          timeMatch[4] = '000';
+          timeMatch[8] = '000';
+        }
+      }
+      
+      if (!timeMatch) {
+        console.warn('无法解析时间行:', timeLine);
+        i++;
+        continue;
+      }
+      
+      const start = parseTime(timeMatch[1], timeMatch[2], timeMatch[3], timeMatch[4]);
+      const end = parseTime(timeMatch[5], timeMatch[6], timeMatch[7], timeMatch[8]);
+      i++;
+      
+      if (i >= lines.length) break;
+      
+      const textLines = [];
+      while (i < lines.length && lines[i].trim() !== '' && !/^\d+$/.test(lines[i].trim())) {
+        textLines.push(lines[i].trim());
+        i++;
+      }
+      
+      const text = textLines.join(' ');
+      const words = splitIntoWords(text);
+      
+      if (words.length > 0) {
+        result.push({
+          index: parseInt(indexLine),
+          start: start,
+          end: end,
+          text: text,
+          words: words,
+          duration: end - start
+        });
+      }
+    }
+    
+    console.log(`解析完成，共 ${result.length} 条字幕`);
+    return result;
+  }
+
+  // 分割文本为单词
+  function splitIntoWords(text) {
+    const regex = /([\w'-]+|[.,!?;:"'])/g;
+    const matches = text.match(regex) || [];
+    return matches.map(m => 
+      /^[.,!?;:"']$/.test(m) ? { type: 'punctuation', text: m } : { type: 'word', text: m }
+    );
+  }
+
+  // 修正时间戳
+  function fixTimestamps(subs, dur) {
+    if (subs.length === 0) return subs;
+    
+    const last = subs[subs.length - 1].end;
+    const needsFix = last > dur * 1.5 || subs[0].start > 3600;
+    
+    if (!needsFix) return subs;
+    
+    const first = subs[0].start;
+    const hourOffset = Math.floor(first / 3600) * 3600;
+    
+    if (hourOffset > 0) {
+      const testStart = subs[0].start - hourOffset;
+      const testEnd = subs[subs.length - 1].end - hourOffset;
+      
+      if (testEnd <= dur * 1.1 && testStart >= 0) {
+        return subs.map(s => ({
+          ...s,
+          start: Math.max(0, s.start - hourOffset),
+          end: Math.max(0, s.end - hourOffset)
+        }));
+      }
+    }
+    
+    const totalWords = subs.reduce((sum, s) => sum + s.words.filter(w => w.type === 'word').length, 0);
+    const avgWordDur = dur / totalWords;
+    let currentTime = 0;
+    
+    return subs.map(s => {
+      const wc = s.words.filter(w => w.type === 'word').length;
+      const durWord = wc * avgWordDur;
+      const newSub = {
+        ...s,
+        start: currentTime,
+        end: currentTime + durWord
+      };
+      currentTime += durWord;
+      return newSub;
+    });
+  }
+
+  // 渲染文本
+  function renderText() {
+    console.log('渲染文本...', subtitles.length);
+    
+    if (subtitles.length === 0) {
+      textArea.innerHTML = '<div class="loading">上传音视频文件和字幕文件开始阅读</div>';
+      return;
+    }
+    
+    let html = '';
+    subtitles.forEach((sub, i) => {
+      html += `<div class="line" id="line-${i}">`;
+      sub.words.forEach((w, j) => {
+        if (w.type === 'word') {
+          html += `<span class="word" id="word-${i}-${j}">${w.text} </span>`;
+        } else {
+          html += `<span class="punctuation">${w.text} </span>`;
+        }
+      });
+      html += '</div>';
+    });
+    
+    textArea.innerHTML = html;
+    console.log('文本渲染完成');
+  }
+
+  // 滚动到当前行
+  function scrollToCurrentLine() {
+    if (currentLineIndex === -1) return;
+    
+    const line = document.getElementById(`line-${currentLineIndex}`);
+    if (!line) return;
+    
+    textArea.scrollTop = line.offsetTop - textArea.clientHeight / 2 + line.offsetHeight / 2;
+  }
+
+  // 更新高亮
+  function updateHighlight() {
+    const t = mediaPlayer.currentTime;
+    let newLineIndex = -1;
+    
+    for (let i = 0; i < subtitles.length; i++) {
+      if (t >= subtitles[i].start && t < subtitles[i].end) {
+        newLineIndex = i;
+        break;
+      }
+    }
+    
+    if (newLineIndex !== currentLineIndex) {
+      if (currentLineIndex !== -1) {
+        const oldLine = document.getElementById(`line-${currentLineIndex}`);
+        if (oldLine) oldLine.classList.remove('active-line');
+      }
+      
+      if (newLineIndex !== -1) {
+        const newLine = document.getElementById(`line-${newLineIndex}`);
+        if (newLine) {
+          newLine.classList.add('active-line');
+          if (followMode) scrollToCurrentLine();
+        }
+      }
+      
+      currentLineIndex = newLineIndex;
+    }
+    
+    document.querySelectorAll('.word.current').forEach(el => el.classList.remove('current'));
+    
+    if (currentLineIndex !== -1) {
+      const sub = subtitles[currentLineIndex];
+      const elapsed = t - sub.start;
+      const progress = Math.min(elapsed / sub.duration, 0.999);
+      const wordCount = sub.words.filter(w => w.type === 'word').length;
+      
+      if (wordCount > 0) {
+        const wordIndex = Math.min(Math.floor(progress * wordCount), wordCount - 1);
+        const wordEl = document.getElementById(`word-${currentLineIndex}-${wordIndex}`);
+        if (wordEl) {
+          wordEl.classList.add('current');
+        }
+      }
+    }
+  }
+
+  // 检测视频编码
+  async function detectVideoEncoding(file) {
+    try {
+      const buffer = await file.slice(0, 256).arrayBuffer();
+      const bytes = new Uint8Array(buffer);
+      
+      // 检测常见编码
+      let encoding = '未知';
+      let details = '';
+      
+      // 检测MP4容器
+      if (bytes[4] === 0x66 && bytes[5] === 0x74 && bytes[6] === 0x79 && bytes[7] === 0x70) {
+        // 检测H.265/HEVC
+        if (bytes[8] === 0x68 && bytes[9] === 0x65 && bytes[10] === 0x76 && bytes[11] === 0x63) {
+          encoding = 'HEVC/H.265';
+          details = '不兼容 ❌ - 需要转换为H.264';
+        }
+        // 检测H.264/AVC
+        else if (bytes[8] === 0x61 && bytes[9] === 0x76 && bytes[10] === 0x63 && bytes[11] === 0x31) {
+          encoding = 'H.264/AVC';
+          details = '应兼容 ✅';
+        }
+        else {
+          encoding = 'MP4 (未知编码)';
+          details = '可能需要转换';
+        }
+      }
+      
+      return { encoding, details };
+    } catch(e) {
+      return { encoding: '无法检测', details: '文件读取失败' };
+    }
+  }
+
+  // 显示错误面板
+  function showErrorPanel(file, errorMsg) {
+    // 移除旧的错误面板
+    const oldPanel = document.querySelector('.error-panel');
+    if (oldPanel) oldPanel.remove();
+    
+    const panel = document.createElement('div');
+    panel.className = 'error-panel';
+    panel.innerHTML = `
+      <strong>无法播放 "${file.name}"</strong>
+      <p>${errorMsg}</p>
+      <p>建议：</p>
+      <ul style="margin:10px 0; padding-left:20px;">
+        <li>点击"降级为音频"尝试播放声音</li>
+        <li>用Edge浏览器测试（支持更多格式）</li>
+        <li>转换为H.264 MP4格式</li>
+      </ul>
+    `;
+    
+    const downgradeBtn = document.createElement('button');
+    downgradeBtn.className = 'action-btn';
+    downgradeBtn.innerHTML = '🔇 降级为音频播放';
+    downgradeBtn.onclick = function() {
+      mediaPlayer.classList.remove('video-mode');
+      mediaPlayer.classList.add('audio-mode');
+      mediaTypeIndicator.textContent = '音频模式';
+      alert('正在尝试仅播放音频...');
+      panel.remove();
+    };
+    
+    const detectBtn = document.createElement('button');
+    detectBtn.className = 'action-btn detect';
+    detectBtn.innerHTML = '🔍 检测视频编码';
+    detectBtn.onclick = async function() {
+      const result = await detectVideoEncoding(file);
+      alert(`检测结果:\n文件: ${file.name}\n编码: ${result.encoding}\n状态: ${result.details}\n大小: ${(file.size/1024/1024).toFixed(1)}MB`);
+    };
+    
+    const testBtn = document.createElement('button');
+    testBtn.className = 'action-btn success';
+    testBtn.innerHTML = '🎬 加载测试视频';
+    testBtn.onclick = function() {
+      mediaPlayer.src = 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4';
+      mediaPlayer.classList.remove('audio-mode');
+      mediaPlayer.classList.add('video-mode');
+      mediaTypeIndicator.textContent = '视频模式(测试)';
+      mediaPlayer.load();
+      panel.remove();
+      alert('正在加载测试视频...如果这个能播，说明页面正常，是你的视频编码问题。');
+    };
+    
+    panel.appendChild(downgradeBtn);
+    panel.appendChild(detectBtn);
+    panel.appendChild(testBtn);
+    
+    document.querySelector('.media-container').appendChild(panel);
+  }
+
+  // 增强版媒体文件上传处理
+  mediaFileInput.addEventListener('change', async function(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    console.log('媒体文件:', file.name, '类型:', file.type, '大小:', (file.size/1024/1024).toFixed(1) + 'MB');
+    
+    // 检查文件大小
+    const maxSize = 1024 * 1024 * 1024; // 1GB
+    if (file.size > maxSize) {
+      if (!confirm(`文件较大 (${(file.size/(1024*1024*1024)).toFixed(2)}GB)，可能影响性能。继续吗？`)) {
+        this.value = '';
+        return;
+      }
+    }
+    
+    // 清除旧错误面板
+    const oldPanel = document.querySelector('.error-panel');
+    if (oldPanel) oldPanel.remove();
+    
+    // 设置播放器
+    isVideo = file.type.startsWith('video/');
+    mediaTypeIndicator.textContent = isVideo ? '视频模式(加载中...)' : '音频模式';
+    mediaPlayer.classList.toggle('video-mode', isVideo);
+    mediaPlayer.classList.toggle('audio-mode', !isVideo);
+    
+    const url = URL.createObjectURL(file);
+    mediaPlayer.src = url;
+    
+    // 清除旧的事件监听器
+    mediaPlayer.onerror = null;
+    mediaPlayer.onloadedmetadata = null;
+    
+    // 设置超时检测
+    let loadTimeout = setTimeout(() => {
+      if (mediaPlayer.readyState < 1) {
+        console.warn('媒体加载超时，可能是格式问题');
+        showErrorPanel(file, '加载超时，可能是编码不支持或文件损坏。');
+      }
+    }, 10000); // 10秒超时
+    
+    // 成功加载
+    mediaPlayer.onloadedmetadata = function() {
+      clearTimeout(loadTimeout);
+      console.log('✅ 媒体加载成功! 时长:', mediaPlayer.duration.toFixed(1) + '秒');
+      mediaTypeIndicator.textContent = isVideo ? '视频模式 ✅' : '音频模式 ✅';
+      
+      if (subtitles.length > 0) {
+        subtitles = fixTimestamps(subtitles, mediaPlayer.duration);
+        renderText();
+      }
+    };
+    
+    // 错误处理
+    mediaPlayer.onerror = function() {
+      clearTimeout(loadTimeout);
+      console.error('媒体加载失败:', mediaPlayer.error);
+      
+      let errorMsg = '未知错误';
+      if (mediaPlayer.error) {
+        switch(mediaPlayer.error.code) {
+          case 1: errorMsg = '加载被用户中止'; break;
+          case 2: errorMsg = '网络错误'; break;
+          case 3: errorMsg = '解码错误 - 视频编码不支持'; break;
+          case 4: errorMsg = '格式不支持 - 可能是H.265编码'; break;
+        }
+      }
+      
+      showErrorPanel(file, `错误: ${errorMsg}\n你的浏览器可能不支持此视频编码。`);
+    };
+    
+    // 尝试播放一小段以确认兼容性
+    setTimeout(() => {
+      if (mediaPlayer.readyState === 0) {
+        console.log('媒体未开始加载，尝试触发加载');
+        mediaPlayer.load();
+      }
+    }, 1000);
+  });
+
+  // 字幕文件上传事件
+  srtFileInput.addEventListener('change', function(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    console.log('字幕文件已选择:', file.name);
+    const reader = new FileReader();
+    
+    reader.onload = function() {
+      console.log('开始解析字幕文件内容...');
+      const raw = parseSRT(reader.result);
+      
+      if (raw.length === 0) {
+        alert('无法解析字幕文件，请检查格式是否为SRT');
+        return;
+      }
+      
+      subtitles = raw;
+      
+      if (mediaPlayer.duration && mediaPlayer.duration > 0) {
+        subtitles = fixTimestamps(subtitles, mediaPlayer.duration);
+      }
+      
+      renderText();
+    };
+    
+    reader.readAsText(file);
+  });
+
+  // 跟随按钮点击事件
+  followBtn.addEventListener('click', function() {
+    if (currentLineIndex !== -1) {
+      scrollToCurrentLine();
+      followBtn.classList.add('active');
+      setTimeout(() => followBtn.classList.remove('active'), 300);
+    }
+  });
+
+  // 媒体时间更新事件
+  mediaPlayer.addEventListener('timeupdate', updateHighlight);
+
+  // 添加测试按钮
+  setTimeout(() => {
+    const testBtn = document.createElement('button');
+    testBtn.className = 'action-btn success';
+    testBtn.innerHTML = '🎬 测试：加载示例视频';
+    testBtn.style.marginLeft = '10px';
+    
+    testBtn.onclick = function() {
+      mediaPlayer.src = 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4';
+      mediaPlayer.classList.remove('audio-mode');
+      mediaPlayer.classList.add('video-mode');
+      mediaTypeIndicator.textContent = '视频模式(测试)';
+      mediaPlayer.load();
+      alert('正在加载测试视频...如果这个能播但你的视频不能，说明是编码问题。');
+    };
+    
+    const leftControls = document.querySelector('.left-controls');
+    if (leftControls) {
+      leftControls.appendChild(testBtn);
+    }
+  }, 1000);
+
+  // 初始渲染
+  renderText();
+  
+  console.log('Media Reader 初始化完成');
+});
+</script>
+
+</body>
+</html>
